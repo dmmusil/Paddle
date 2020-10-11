@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Diagnostics;
 using System.Net.Http;
+using System.Text;
 using System.Threading.Tasks;
 using DomainTactics.Messaging;
 using Paddle.Core.Channels;
@@ -18,7 +19,7 @@ namespace Paddle.Console
         {
             var client = new HttpClient
             {
-                BaseAddress = new Uri("http://localhost:7071")
+                BaseAddress = new Uri("https://localhost:5001")
             };
 
             var blob = CloudStorageAccount.DevelopmentStorageAccount
@@ -69,7 +70,7 @@ namespace Paddle.Console
                     Sender = "dylan@email.com"
                 }, nameof(SubmitChatMessage));
 
-            var json = await client.GetStringAsync("api/channel/DK");
+            var json = await client.GetStringAsync("channel/DK");
             json = JObject.Parse(json).ToString(Formatting.Indented);
             System.Console.WriteLine(json);
             System.Console.ReadLine();
@@ -81,19 +82,23 @@ namespace Paddle.Console
         public static async Task SubmitCommand(this HttpClient client,
             Command c, string commandName)
         {
-            var command = new { Type = commandName, Command = c };
+            var command = new { Type = commandName, Command = JsonConvert.SerializeObject(c) };
             var json = JsonConvert.SerializeObject(command);
             System.Console.WriteLine($"Submitting {json}");
-            var request = await client.PostAsync("api/command",
-                new StringContent(json));
+            var request = await client.PostAsync("command",
+                new StringContent(json, Encoding.UTF8, "application/json"));
             System.Console.WriteLine($"Result: {request.StatusCode}");
+            if (!request.IsSuccessStatusCode)
+            {
+                System.Console.WriteLine(await request.Content.ReadAsStringAsync());
+            }
             var timer = Stopwatch.StartNew();
             var writeVersion = await request.Content.ReadAsStringAsync();
-            var readVersion = await client.GetStringAsync("api/version");
+            var readVersion = await client.GetStringAsync("version");
             while (long.Parse(readVersion) <
                    long.Parse(writeVersion))
             {
-                readVersion = await client.GetStringAsync("api/version");
+                readVersion = await client.GetStringAsync("version");
             }
 
             System.Console.WriteLine($"Read side caught up in {timer.ElapsedMilliseconds} ms");

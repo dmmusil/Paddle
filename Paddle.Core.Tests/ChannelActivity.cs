@@ -41,7 +41,7 @@ namespace Paddle.Core.Tests
             bus.Register<RegistrationStarted>(user.When);
             bus.Register<RegistrationSucceeded>(_userService.When);
 
-            var _ = new AllStreamSubscriber(_store, bus, types);
+            var _ = new AllStreamSubscriber(_store, bus, types, null, true);
 
 
         }

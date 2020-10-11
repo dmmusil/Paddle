@@ -1,22 +1,20 @@
-using System.Net.Http;
 using System.Threading.Tasks;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
+using DomainTactics.Persistence;
+using Microsoft.AspNetCore.Mvc;
 
 namespace Paddle.API
 {
-    public class VersionEndpoint
+    [Route("version"), ApiController]
+    public class VersionController : ControllerBase
     {
         private readonly ICheckpointRepository _repo;
 
-        public VersionEndpoint(ICheckpointRepository repo)
+        public VersionController(ICheckpointRepository repo)
         {
             _repo = repo;
         }
 
-        [FunctionName("Version")]
-        public Task<long> GetCheckpointValue(
-            [HttpTrigger(AuthorizationLevel.Function, "get", Route = "version")]
-            HttpRequestMessage req) => _repo.GetCheckpoint();
+        [HttpGet]
+        public Task<long> Version() => _repo.GetCheckpoint();
     }
 }

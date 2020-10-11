@@ -1,52 +1,86 @@
 ﻿using DomainTactics.Messaging;
 using DomainTactics.Persistence;
-using DotNetify;
+using Microsoft.AspNetCore.Builder;
+using Microsoft.AspNetCore.Hosting;
+using Microsoft.Azure.Cosmos.Table;
+using Microsoft.Azure.Storage.Blob;
 using Paddle.Core.Channels;
 using Paddle.Core.Messages;
 using Paddle.Core.Registration;
 using Paddle.Core.UserProfiles;
-using Microsoft.Azure.Functions.Extensions.DependencyInjection;
+using Microsoft.Extensions.Configuration;
 using Microsoft.Extensions.DependencyInjection;
-using Microsoft.WindowsAzure.Storage;
+using Microsoft.Extensions.Hosting;
 using SqlStreamStore;
 using SqlStreamStore.Infrastructure;
+using TableStorageAccount = Microsoft.Azure.Cosmos.Table.CloudStorageAccount;
+using BlobStorageAccount = Microsoft.Azure.Storage.CloudStorageAccount;
 
-[assembly: FunctionsStartup(typeof(Paddle.API.Startup))]
 namespace Paddle.API
 {
-    public class Startup : FunctionsStartup
+    public class Startup
     {
-        public override void Configure(IFunctionsHostBuilder builder)
+        public Startup(IConfiguration configuration)
         {
+            Configuration = configuration;
+        }
+
+        public IConfiguration Configuration { get; }
+
+        // This method gets called by the runtime. Use this method to add services to the container.
+        public void ConfigureServices(IServiceCollection services)
+        {
+            services.AddControllers();
+
             var types = RegisterTypes();
 
             var store = new InMemoryStreamStore();
             var writeRepo = new SqlStreamStoreRepository(store, types);
-            var cloudBlobClient = CloudStorageAccount.DevelopmentStorageAccount.CreateCloudBlobClient();
+            var cloudBlobClient = BlobStorageAccount.DevelopmentStorageAccount.CreateCloudBlobClient();
             var readRepo = new BlobDocumentStorage(cloudBlobClient);
             var commandBus = new CommandBus();
             var eventBus = new EventBus();
             RegisterCommandHandlers(commandBus, writeRepo);
             RegisterEventHandlers(eventBus, readRepo, writeRepo);
 
-            var cloudTableClient = CloudStorageAccount
-                        .DevelopmentStorageAccount.CreateCloudTableClient();
+            var cloudTableClient = TableStorageAccount.DevelopmentStorageAccount.CreateCloudTableClient();
             var checkpointRepository = new TableStorageCheckpointRepository(cloudTableClient);
             checkpointRepository.ClearCheckpoint();
 
-            builder.Services.AddSingleton<IDocumentStorage>(readRepo);
-            builder.Services.AddSingleton<StreamStoreBase>(store);
-            builder.Services.AddSingleton(commandBus);
-            builder.Services.AddSingleton(cloudTableClient);
-            builder.Services.AddSingleton(cloudBlobClient);
-            builder.Services
-                .AddScoped<ICheckpointRepository,
-                    TableStorageCheckpointRepository>();
-            builder.Services.AddSingleton<IEventBus>(eventBus);
-            builder.Services.AddSingleton(types);
+            services.AddSingleton<IDocumentStorage>(readRepo);
+            services.AddSingleton<StreamStoreBase>(store);
+            services.AddSingleton(commandBus);
+            services.AddSingleton(cloudTableClient);
+            services.AddSingleton(cloudBlobClient);
+            services.AddScoped<ICheckpointRepository, TableStorageCheckpointRepository>();
+            services.AddSingleton<IEventBus>(eventBus);
+            services.AddSingleton(types);
 
-            builder.Services.AddDotNetify();
+            AllStreamSubscriber.Create(store, eventBus, types, checkpointRepository);
         }
+
+        // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
+        public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
+        {
+            if (env.IsDevelopment())
+            {
+                app.UseDeveloperExceptionPage();
+            }
+
+            app.UseHttpsRedirection();
+
+            app.UseRouting();
+
+            app.UseAuthorization();
+
+            app.UseEndpoints(endpoints =>
+            {
+                endpoints.MapControllers();
+            });
+        }
+
+            
+
 
         private void RegisterEventHandlers(EventBus bus, BlobDocumentStorage readRepo, SqlStreamStoreRepository writeRepo)
         {
