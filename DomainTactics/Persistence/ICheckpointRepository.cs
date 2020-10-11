@@ -1,6 +1,6 @@
 using System.Threading.Tasks;
 
-namespace Paddle.API
+namespace DomainTactics.Persistence
 {
     public interface ICheckpointRepository
     {

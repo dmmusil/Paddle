@@ -1,5 +1,6 @@
 ﻿using System.Threading.Tasks;
-using Microsoft.WindowsAzure.Storage.Table;
+using DomainTactics.Persistence;
+using Microsoft.Azure.Cosmos.Table;
 
 namespace Paddle.API
 {

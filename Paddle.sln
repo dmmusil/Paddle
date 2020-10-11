@@ -11,7 +11,7 @@ Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Paddle.Core.Tests", "Paddle
 EndProject
 Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "Paddle.Console", "Paddle.Console\Paddle.Console.csproj", "{725C311E-99EB-4327-9FA2-32A00B9CACE2}"
 EndProject
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "DomainTactics", "DomainTactics\DomainTactics.csproj", "{6D69414F-7A34-459C-9B40-2247D7A544F1}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "DomainTactics", "DomainTactics\DomainTactics.csproj", "{6D69414F-7A34-459C-9B40-2247D7A544F1}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution

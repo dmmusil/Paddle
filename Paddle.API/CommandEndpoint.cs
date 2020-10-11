@@ -1,45 +1,38 @@
 using System.Threading.Tasks;
 using DomainTactics.Messaging;
-using Microsoft.Azure.WebJobs;
-using Microsoft.Azure.WebJobs.Extensions.Http;
-using Microsoft.AspNetCore.Http;
-using Microsoft.Extensions.Logging;
+using Microsoft.AspNetCore.Mvc;
 using Newtonsoft.Json;
-using Newtonsoft.Json.Linq;
 
 namespace Paddle.API
 {
-    public class CommandEndpoint
+    [Route("command"), ApiController]
+    public class CommandController : ControllerBase
     {
         private readonly CommandBus _bus;
         private readonly TypeMapper _types;
 
-        public CommandEndpoint(CommandBus bus, TypeMapper types)
+        public CommandController(CommandBus bus, TypeMapper types)
         {
             _bus = bus;
             _types = types;
         }
 
-        [FunctionName("Command")]
-        public async Task<long> Run(
-            [HttpTrigger(AuthorizationLevel.Function, "post",
-                Route = "command")]
-            HttpRequest req,
-            [Queue("new-event")] IAsyncCollector<string> version,
-            ILogger log)
+        [HttpPost]
+        public async Task<long> Command([FromBody] CommandModel commandModel)
         {
-            var json = await req.ReadAsStringAsync();
-            var jo = JObject.Parse(json);
-            var typeName = jo["Type"].ToString();
-            var type = _types.TypeFor(typeName);
-            var command =
-                (Command)JsonConvert.DeserializeObject(
-                    jo["Command"].ToString(), type);
-            log.LogInformation($"Processing command of type {typeName}.");
-            var writeVersion = await _bus.Send(command);
-            await version.AddAsync(writeVersion.ToString());
-            log.LogInformation($"{typeName} processed successfully.");
+            var type = _types.TypeFor(commandModel.Type);
+            //log.LogInformation($"Processing command of type {typeName}.");
+            var writeVersion = await _bus.Send(
+                (Command) JsonConvert.DeserializeObject(commandModel.Command,
+                    type));
+            //log.LogInformation($"{typeName} processed successfully.");
             return writeVersion;
         }
+    }
+
+    public class CommandModel
+    {
+        public string Type { get; set; }
+        public string Command { get; set; }
     }
 }
