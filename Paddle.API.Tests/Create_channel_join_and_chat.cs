@@ -1,31 +1,36 @@
-﻿using System;
+using System;
 using System.Diagnostics;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using DomainTactics.Messaging;
-using Paddle.Core.Channels;
-using Paddle.Core.Messages;
-using Microsoft.Azure.Storage;
-using Microsoft.Azure.Storage.Blob;
+using Microsoft.AspNetCore.Mvc.Testing;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
+using Paddle.Core.Channels;
+using Paddle.Core.Messages;
+using Xunit;
+using Xunit.Abstractions;
 
-namespace Paddle.Console
+namespace Paddle.API.Tests
 {
-    class Program
+    // ReSharper disable once InconsistentNaming
+    public class Create_channel_join_and_chat : IClassFixture<WebApplicationFactory<StartupInMemory>>
     {
-        static async Task Main()
+        private readonly WebApplicationFactory<StartupInMemory> _factory;
+        private readonly ITestOutputHelper _testOutputHelper;
+
+        public Create_channel_join_and_chat(WebApplicationFactory<StartupInMemory> factory, ITestOutputHelper testOutputHelper)
         {
-            var client = new HttpClient
-            {
-                BaseAddress = new Uri("https://localhost:5001")
-            };
+            _factory = factory;
+            _testOutputHelper = testOutputHelper;
+        }
 
-            var blob = CloudStorageAccount.DevelopmentStorageAccount
-                .CreateCloudBlobClient();
+        [Fact]
+        public async Task Test1()
+        {
 
-            await blob.GetContainerReference("channels").DeleteIfExistsAsync();
+            var client = _factory.CreateClient();
 
             //await client.SubmitCommand(
             //    new Register(DateTime.UtcNow, "kate@email.com", "kate"),
@@ -42,7 +47,7 @@ namespace Paddle.Console
                     ChannelName = "Dylan and Kate",
                     CreatedBy = "dylan@email.com",
                     CreateTime = DateTime.UtcNow
-                }, nameof(CreateChannel));
+                }, nameof(CreateChannel), _testOutputHelper);
 
             await client.SubmitCommand(
                 new JoinChannel
@@ -50,7 +55,7 @@ namespace Paddle.Console
                     ChannelId = "channels/DK",
                     UserId = "dylan@email.com",
                     Time = DateTime.UtcNow
-                }, nameof(JoinChannel));
+                }, nameof(JoinChannel), _testOutputHelper);
 
             await client.SubmitCommand(
                 new JoinChannel
@@ -58,7 +63,7 @@ namespace Paddle.Console
                     ChannelId = "channels/DK",
                     UserId = "kate@email.com",
                     Time = DateTime.UtcNow
-                }, nameof(JoinChannel));
+                }, nameof(JoinChannel), _testOutputHelper);
 
             await client.SubmitCommand(
                 new SubmitChatMessage
@@ -68,29 +73,28 @@ namespace Paddle.Console
                     SubmitTime = DateTime.UtcNow,
                     MessageId = Guid.NewGuid().ToString("N"),
                     Sender = "dylan@email.com"
-                }, nameof(SubmitChatMessage));
+                }, nameof(SubmitChatMessage), _testOutputHelper);
 
             var json = await client.GetStringAsync("channel/DK");
             json = JObject.Parse(json).ToString(Formatting.Indented);
-            System.Console.WriteLine(json);
-            System.Console.ReadLine();
+            _testOutputHelper.WriteLine(json);
         }
     }
 
     public static class HttpClientExtensions
     {
         public static async Task SubmitCommand(this HttpClient client,
-            Command c, string commandName)
+            Command c, string commandName, ITestOutputHelper console)
         {
             var command = new { Type = commandName, Command = JsonConvert.SerializeObject(c) };
             var json = JsonConvert.SerializeObject(command);
-            System.Console.WriteLine($"Submitting {json}");
+            console.WriteLine($"Submitting {json}");
             var request = await client.PostAsync("command",
                 new StringContent(json, Encoding.UTF8, "application/json"));
-            System.Console.WriteLine($"Result: {request.StatusCode}");
+            console.WriteLine($"Result: {request.StatusCode}");
             if (!request.IsSuccessStatusCode)
             {
-                System.Console.WriteLine(await request.Content.ReadAsStringAsync());
+                console.WriteLine(await request.Content.ReadAsStringAsync());
             }
             var timer = Stopwatch.StartNew();
             var writeVersion = await request.Content.ReadAsStringAsync();
@@ -101,8 +105,9 @@ namespace Paddle.Console
                 readVersion = await client.GetStringAsync("version");
             }
 
-            System.Console.WriteLine($"Read side caught up in {timer.ElapsedMilliseconds} ms");
+            console.WriteLine($"Read side caught up in {timer.ElapsedMilliseconds} ms");
 
         }
+
     }
 }

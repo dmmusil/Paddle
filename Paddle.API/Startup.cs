@@ -1,4 +1,6 @@
-﻿using DomainTactics.Messaging;
+﻿using System.Collections.Generic;
+using System.Threading.Tasks;
+using DomainTactics.Messaging;
 using DomainTactics.Persistence;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
@@ -18,17 +20,18 @@ using BlobStorageAccount = Microsoft.Azure.Storage.CloudStorageAccount;
 
 namespace Paddle.API
 {
-    public class Startup
+
+    public abstract class Startup
     {
-        public Startup(IConfiguration configuration)
+        protected Startup(IConfiguration configuration)
         {
             Configuration = configuration;
         }
 
-        public IConfiguration Configuration { get; }
+        private IConfiguration Configuration { get; }
 
         // This method gets called by the runtime. Use this method to add services to the container.
-        public void ConfigureServices(IServiceCollection services)
+        public virtual void ConfigureServices(IServiceCollection services)
         {
             services.AddControllers();
 
@@ -36,28 +39,29 @@ namespace Paddle.API
 
             var store = new InMemoryStreamStore();
             var writeRepo = new SqlStreamStoreRepository(store, types);
-            var cloudBlobClient = BlobStorageAccount.DevelopmentStorageAccount.CreateCloudBlobClient();
-            var readRepo = new BlobDocumentStorage(cloudBlobClient);
+            
+            var readRepo = DocumentStorage();
+            var checkpointRepository = CheckpointRepository();
+
+            services.AddSingleton(readRepo);
+            services.AddSingleton<StreamStoreBase>(store);
+            services.AddScoped(x=> checkpointRepository);
+            
             var commandBus = new CommandBus();
             var eventBus = new EventBus();
             RegisterCommandHandlers(commandBus, writeRepo);
             RegisterEventHandlers(eventBus, readRepo, writeRepo);
 
-            var cloudTableClient = TableStorageAccount.DevelopmentStorageAccount.CreateCloudTableClient();
-            var checkpointRepository = new TableStorageCheckpointRepository(cloudTableClient);
-            checkpointRepository.ClearCheckpoint();
-
-            services.AddSingleton<IDocumentStorage>(readRepo);
-            services.AddSingleton<StreamStoreBase>(store);
-            services.AddSingleton(commandBus);
-            services.AddSingleton(cloudTableClient);
-            services.AddSingleton(cloudBlobClient);
-            services.AddScoped<ICheckpointRepository, TableStorageCheckpointRepository>();
             services.AddSingleton<IEventBus>(eventBus);
             services.AddSingleton(types);
-
+            services.AddSingleton(commandBus);
+            
             AllStreamSubscriber.Create(store, eventBus, types, checkpointRepository);
         }
+
+        protected abstract IDocumentStorage DocumentStorage();
+
+        protected abstract ICheckpointRepository CheckpointRepository();
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
         public void Configure(IApplicationBuilder app, IWebHostEnvironment env)
@@ -79,10 +83,7 @@ namespace Paddle.API
             });
         }
 
-            
-
-
-        private void RegisterEventHandlers(EventBus bus, BlobDocumentStorage readRepo, SqlStreamStoreRepository writeRepo)
+        private void RegisterEventHandlers(IEventBus bus, IDocumentStorage readRepo, IRepository writeRepo)
         {
             var channelHistoryService = new ChannelHistoryHandlers(readRepo);
             var user = new UsersHandlers(writeRepo);
@@ -125,7 +126,7 @@ namespace Paddle.API
         }
 
         private void RegisterCommandHandlers(CommandBus bus,
-            SqlStreamStoreRepository writeRepo)
+            IRepository writeRepo)
         {
             var registrationHandlers = new UserRegistrationHandlers(writeRepo);
             bus.Register<Register>(registrationHandlers.Handle);
@@ -138,6 +139,82 @@ namespace Paddle.API
             bus.Register<CreateChannel>(channelHandlers.Handle);
             bus.Register<JoinChannel>(channelHandlers.Handle);
             bus.Register<LeaveChannel>(channelHandlers.Handle);
+        }
+    }
+
+    public class StartupInMemory : Startup
+    {
+        public StartupInMemory(IConfiguration configuration) : base(configuration)
+        {
+        }
+
+        protected override IDocumentStorage DocumentStorage()
+        {
+            return new InMemoryDocumentStorage();
+        }
+
+        protected override ICheckpointRepository CheckpointRepository()
+        {
+            return new InMemoryDocumentStorage();
+        }
+    }
+
+    public class InMemoryDocumentStorage : IDocumentStorage, ICheckpointRepository
+    {
+        private readonly Dictionary<string, IHaveIdentifier> _documents = new Dictionary<string, IHaveIdentifier>();
+        private long _checkpoint;
+
+        public Task<T> Load<T>(string identifier)
+        {
+            return Task.FromResult((T)_documents[identifier]);
+        }
+
+        public Task Save(IHaveIdentifier document)
+        {
+            _documents[document.Identifier] = document;
+            return Task.CompletedTask;
+        }
+
+        public Task<long> GetCheckpoint()
+        {
+            return Task.FromResult(_checkpoint);
+        }
+
+        public Task UpdateCheckpoint(long value)
+        {
+            _checkpoint = value;
+            return Task.CompletedTask;
+        }
+    }
+
+
+    public class StartupWithReadModelReset : Startup
+    {
+        public StartupWithReadModelReset(IConfiguration configuration) : base(configuration)
+        {
+        }
+
+        public override void ConfigureServices(IServiceCollection services)
+        {
+            base.ConfigureServices(services);
+
+            var cloudTableClient = TableStorageAccount.DevelopmentStorageAccount.CreateCloudTableClient();
+            var checkpointRepository = new TableStorageCheckpointRepository(cloudTableClient);
+            checkpointRepository.ClearCheckpoint();
+        }
+
+        protected override IDocumentStorage DocumentStorage()
+        {
+            var cloudBlobClient = BlobStorageAccount.DevelopmentStorageAccount
+                .CreateCloudBlobClient();
+            IDocumentStorage readRepo = new BlobDocumentStorage(cloudBlobClient);
+            return readRepo;
+        }
+
+        protected override ICheckpointRepository CheckpointRepository()
+        {
+            return new TableStorageCheckpointRepository(TableStorageAccount
+                .DevelopmentStorageAccount.CreateCloudTableClient());
         }
     }
 }
