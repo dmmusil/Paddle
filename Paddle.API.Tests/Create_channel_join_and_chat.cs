@@ -4,6 +4,8 @@ using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using DomainTactics.Messaging;
+using Microsoft.AspNetCore;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
@@ -14,13 +16,20 @@ using Xunit.Abstractions;
 
 namespace Paddle.API.Tests
 {
-    // ReSharper disable once InconsistentNaming
-    public class Create_channel_join_and_chat : IClassFixture<WebApplicationFactory<StartupInMemory>>
+    public class InMemoryWebAppFactory<TStartup> : WebApplicationFactory<TStartup> where TStartup : class
     {
-        private readonly WebApplicationFactory<StartupInMemory> _factory;
+        protected override IWebHostBuilder CreateWebHostBuilder()
+        {
+            return WebHost.CreateDefaultBuilder(null).UseStartup<TStartup>();
+        }
+    }
+    // ReSharper disable once InconsistentNaming
+    public class Create_channel_join_and_chat : IClassFixture<InMemoryWebAppFactory<StartupInMemory>>
+    {
+        private readonly InMemoryWebAppFactory<StartupInMemory> _factory;
         private readonly ITestOutputHelper _testOutputHelper;
 
-        public Create_channel_join_and_chat(WebApplicationFactory<StartupInMemory> factory, ITestOutputHelper testOutputHelper)
+        public Create_channel_join_and_chat(InMemoryWebAppFactory<StartupInMemory> factory, ITestOutputHelper testOutputHelper)
         {
             _factory = factory;
             _testOutputHelper = testOutputHelper;
@@ -29,7 +38,6 @@ namespace Paddle.API.Tests
         [Fact]
         public async Task Test1()
         {
-
             var client = _factory.CreateClient();
 
             //await client.SubmitCommand(

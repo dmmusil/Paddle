@@ -14,7 +14,8 @@ namespace Paddle.API
             Host.CreateDefaultBuilder(args)
                 .ConfigureWebHostDefaults(webBuilder =>
                 {
-                    webBuilder.UseStartup<StartupWithReadModelReset>();
+                    webBuilder.UseStartup<StartupInMemory>();
+                    //webBuilder.UseStartup<Startup>();
                 });
     }
 }

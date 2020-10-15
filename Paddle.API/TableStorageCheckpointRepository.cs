@@ -44,13 +44,10 @@ namespace Paddle.API
             await table.ExecuteAsync(operation);
         }
 
-        public void ClearCheckpoint()
+        public async Task ClearCheckpoint()
         {
-            Task.Run(async () =>
-            {
-                await GetCheckpoint();
-                await UpdateCheckpoint(-1);
-            }).Wait();
+            await GetCheckpoint();
+            await UpdateCheckpoint(-1);
         }
     }
 }

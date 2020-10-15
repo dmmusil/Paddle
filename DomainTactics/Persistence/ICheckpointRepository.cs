@@ -6,5 +6,6 @@ namespace DomainTactics.Persistence
     {
         Task<long> GetCheckpoint();
         Task UpdateCheckpoint(long value);
+        Task ClearCheckpoint();
     }
 }
