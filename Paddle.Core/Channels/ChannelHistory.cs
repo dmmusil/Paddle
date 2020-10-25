@@ -1,5 +1,6 @@
 ﻿using System.Collections.Generic;
 using System.Linq;
+using DomainTactics.Messaging;
 using DomainTactics.Persistence;
 using Paddle.Core.Messages;
 
@@ -13,8 +14,11 @@ namespace Paddle.Core.Channels
         public Dictionary<string, DisplayMessage> Messages { get; set; } =
             new Dictionary<string, DisplayMessage>();
 
+        private void Checkpoint(Event e) => Position = e.Position;
+
         public void When(ChannelCreated created)
         {
+            Checkpoint(created);
             Name = created.Name;
             Identifier = created.ID;
         }
@@ -23,6 +27,7 @@ namespace Paddle.Core.Channels
 
         public void When(ChannelJoined joined)
         {
+            Checkpoint(joined);
             Members[joined.UserId] = joined.DisplayName;
             Messages[joined.UniqueId] = new DisplayMessage(
                 $"{joined.DisplayName} joined.",
@@ -31,6 +36,7 @@ namespace Paddle.Core.Channels
 
         public void When(ChannelLeft left)
         {
+            Checkpoint(left);
             var member = Members[left.UserId];
             if (Members.Remove(left.UserId))
             {
@@ -42,6 +48,7 @@ namespace Paddle.Core.Channels
 
         public void When(MessageSubmitted message)
         {
+            Checkpoint(message);
             Messages[message.Id] = new DisplayMessage(message.Contents,
                 message.Time,
                 Members[message.Sender],
@@ -68,5 +75,6 @@ namespace Paddle.Core.Channels
         }
 
         public string Identifier { get; set; }
+        public long Position { get; set; }
     }
 }

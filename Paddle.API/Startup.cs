@@ -58,7 +58,7 @@ namespace Paddle.API
             services.AddSingleton(types);
             services.AddSingleton(commandBus);
 
-            AllStreamSubscriber.Create(store, eventBus, types, checkpointRepository);
+            AllStreamSubscriber.Create(store, eventBus, types);
         }
 
         protected virtual IDocumentStorage DocumentStorage()
@@ -73,8 +73,6 @@ namespace Paddle.API
         protected virtual ICheckpointRepository CheckpointRepository()
         {
             throw new NotImplementedException();
-            return new TableStorageCheckpointRepository(TableStorageAccount
-                .DevelopmentStorageAccount.CreateCloudTableClient());
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.

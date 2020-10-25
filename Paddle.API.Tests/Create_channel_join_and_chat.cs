@@ -106,11 +106,15 @@ namespace Paddle.API.Tests
             }
             var timer = Stopwatch.StartNew();
             var writeVersion = await request.Content.ReadAsStringAsync();
-            var readVersion = await client.GetStringAsync("version");
+            var versionUrl = "version?id=channels/DK";
+            var readVersion = await client.GetStringAsync(versionUrl);
+            var attempts = 0;
             while (long.Parse(readVersion) <
                    long.Parse(writeVersion))
             {
-                readVersion = await client.GetStringAsync("version");
+                readVersion = await client.GetStringAsync(versionUrl);
+                attempts++;
+                if (attempts > 50) throw new Exception("Read model failed to catch up.");
             }
 
             console.WriteLine($"Read side caught up in {timer.ElapsedMilliseconds} ms");

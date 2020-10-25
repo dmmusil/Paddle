@@ -6,6 +6,7 @@ using DomainTactics.Persistence;
 using Microsoft.Azure.Storage;
 using Microsoft.Azure.Storage.Blob;
 using Newtonsoft.Json;
+using Paddle.Core.Channels;
 
 namespace Paddle.API
 {
@@ -39,7 +40,6 @@ namespace Paddle.API
 
             throw new ArgumentOutOfRangeException(nameof(identifier));
         }
-
 
         public async Task Save(IHaveIdentifier document)
         {
