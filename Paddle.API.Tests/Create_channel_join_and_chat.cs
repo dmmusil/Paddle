@@ -8,6 +8,7 @@ using DomainTactics.Persistence;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.AspNetCore.TestHost;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Paddle.Core.Channels;
@@ -28,6 +29,7 @@ namespace Paddle.API.Tests
             _factory = factory.WithWebHostBuilder(c => c.ConfigureTestServices(s =>
             {
                 s.AddSingleton<IDocumentStorage, InMemoryDocumentStorage>();
+                s.AddLogging(b => b.ClearProviders());
             }));
             _testOutputHelper = testOutputHelper;
         }
