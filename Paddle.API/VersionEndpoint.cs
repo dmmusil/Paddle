@@ -15,6 +15,10 @@ namespace Paddle.API
         }
 
         [HttpGet]
-        public async Task<long> Version(string id) => (await _repo.Load<IHaveIdentifier>(id)).Position;
+        public async Task<long> Version(string id)
+        {
+            var document = await _repo.Load<IHaveIdentifier>(id);
+            return document.Position;
+        }
     }
 }

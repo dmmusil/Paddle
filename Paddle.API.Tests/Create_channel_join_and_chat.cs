@@ -1,12 +1,14 @@
 using System;
 using System.Diagnostics;
+using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
 using DomainTactics.Messaging;
-using Microsoft.AspNetCore;
-using Microsoft.AspNetCore.Hosting;
+using DomainTactics.Persistence;
 using Microsoft.AspNetCore.Mvc.Testing;
+using Microsoft.AspNetCore.TestHost;
+using Microsoft.Extensions.DependencyInjection;
 using Newtonsoft.Json;
 using Newtonsoft.Json.Linq;
 using Paddle.Core.Channels;
@@ -16,22 +18,20 @@ using Xunit.Abstractions;
 
 namespace Paddle.API.Tests
 {
-    public class InMemoryWebAppFactory<TStartup> : WebApplicationFactory<TStartup> where TStartup : class
-    {
-        protected override IWebHostBuilder CreateWebHostBuilder()
-        {
-            return WebHost.CreateDefaultBuilder(null).UseStartup<TStartup>();
-        }
-    }
     // ReSharper disable once InconsistentNaming
-    public class Create_channel_join_and_chat : IClassFixture<InMemoryWebAppFactory<StartupInMemory>>
+    public class Create_channel_join_and_chat : IClassFixture<WebApplicationFactory<Startup>>
     {
-        private readonly InMemoryWebAppFactory<StartupInMemory> _factory;
+        private readonly WebApplicationFactory<Startup> _factory;
         private readonly ITestOutputHelper _testOutputHelper;
 
-        public Create_channel_join_and_chat(InMemoryWebAppFactory<StartupInMemory> factory, ITestOutputHelper testOutputHelper)
+        public Create_channel_join_and_chat(WebApplicationFactory<Startup> factory, ITestOutputHelper testOutputHelper)
         {
-            _factory = factory;
+            _factory = factory.WithWebHostBuilder(c => c.ConfigureTestServices(s =>
+            {
+                s.Remove(s.FirstOrDefault(ss =>
+                    ss.ServiceType == typeof(IDocumentStorage) || ss.ServiceType == typeof(BlobDocumentStorage)));
+                s.AddSingleton<IDocumentStorage, InMemoryDocumentStorage>();
+            }));
             _testOutputHelper = testOutputHelper;
         }
 
@@ -40,18 +40,11 @@ namespace Paddle.API.Tests
         {
             var client = _factory.CreateClient();
 
-            //await client.SubmitCommand(
-            //    new Register(DateTime.UtcNow, "kate@email.com", "kate"),
-            //    nameof(Register));
-
-            //await client.SubmitCommand(
-            //    new Register(DateTime.UtcNow, "dylan@email.com", "dylan"),
-            //    nameof(Register));
-
+            const string channelId = "channels/DK";
             await client.SubmitCommand(
                 new CreateChannel
                 {
-                    ChannelId = "channels/DK",
+                    ChannelId = channelId,
                     ChannelName = "Dylan and Kate",
                     CreatedBy = "dylan@email.com",
                     CreateTime = DateTime.UtcNow
@@ -60,7 +53,7 @@ namespace Paddle.API.Tests
             await client.SubmitCommand(
                 new JoinChannel
                 {
-                    ChannelId = "channels/DK",
+                    ChannelId = channelId,
                     UserId = "dylan@email.com",
                     Time = DateTime.UtcNow
                 }, nameof(JoinChannel), _testOutputHelper);
@@ -68,7 +61,7 @@ namespace Paddle.API.Tests
             await client.SubmitCommand(
                 new JoinChannel
                 {
-                    ChannelId = "channels/DK",
+                    ChannelId = channelId,
                     UserId = "kate@email.com",
                     Time = DateTime.UtcNow
                 }, nameof(JoinChannel), _testOutputHelper);
@@ -76,7 +69,7 @@ namespace Paddle.API.Tests
             await client.SubmitCommand(
                 new SubmitChatMessage
                 {
-                    Channel = "channels/DK",
+                    Channel = channelId,
                     Contents = "Hi Kate!",
                     SubmitTime = DateTime.UtcNow,
                     MessageId = Guid.NewGuid().ToString("N"),

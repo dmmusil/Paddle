@@ -6,7 +6,6 @@ using DomainTactics.Persistence;
 using Microsoft.Azure.Storage;
 using Microsoft.Azure.Storage.Blob;
 using Newtonsoft.Json;
-using Paddle.Core.Channels;
 
 namespace Paddle.API
 {

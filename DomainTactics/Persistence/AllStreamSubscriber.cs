@@ -36,18 +36,8 @@ namespace DomainTactics.Persistence
             HasCaughtUp hasCaughtUp = null,
             bool testing = false)
         {
-            if (testing)
-            {
-                _store.SubscribeToAll(start, TestStreamMessageReceived,
-                    SubscriptionDropped, hasCaughtUp);
-
-            }
-            else
-            {
-                _store.SubscribeToAll(start, StreamMessageReceived,
-                    SubscriptionDropped, hasCaughtUp);
-            }
-
+            _store.SubscribeToAll(start, StreamMessageReceived,
+                SubscriptionDropped, hasCaughtUp);
         }
 
 
@@ -64,12 +54,6 @@ namespace DomainTactics.Persistence
             @event.Position = streamMessage.Position;
             await _bus.Publish(@event);
         }
-
-
-        private async Task TestStreamMessageReceived(
-            IAllStreamSubscription subscription, StreamMessage streamMessage,
-            CancellationToken cancellationToken) =>
-            await _bus.Publish(await StreamMessageToEvent(streamMessage, cancellationToken));
 
         private async Task<Event> StreamMessageToEvent(
             StreamMessage streamMessage,
