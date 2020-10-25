@@ -13,6 +13,7 @@ namespace Paddle.Core.Channels
         public Dictionary<string, DisplayMessage> Messages { get; set; } =
             new Dictionary<string, DisplayMessage>();
 
+
         public void When(ChannelCreated created)
         {
             Name = created.Name;
@@ -26,7 +27,9 @@ namespace Paddle.Core.Channels
             Members[joined.UserId] = joined.DisplayName;
             Messages[joined.UniqueId] = new DisplayMessage(
                 $"{joined.DisplayName} joined.",
-                joined.JoinTime, null, null);
+                joined.JoinTime,
+                null,
+                null);
         }
 
         public void When(ChannelLeft left)
@@ -34,15 +37,18 @@ namespace Paddle.Core.Channels
             var member = Members[left.UserId];
             if (Members.Remove(left.UserId))
             {
-                Messages[left.UniqueId] = new DisplayMessage($"{member} left.",
-                    left.DepartureTime, null, null);
-
+                Messages[left.UniqueId] = new DisplayMessage(
+                    $"{member} left.",
+                    left.DepartureTime, 
+                    null, 
+                    null);
             }
         }
 
         public void When(MessageSubmitted message)
         {
-            Messages[message.Id] = new DisplayMessage(message.Contents,
+            Messages[message.Id] = new DisplayMessage(
+                message.Contents,
                 message.Time,
                 Members[message.Sender],
                 message.Id);
@@ -68,5 +74,6 @@ namespace Paddle.Core.Channels
         }
 
         public string Identifier { get; set; }
+        public long Position { get; set; }
     }
 }

@@ -1,8 +1,10 @@
-﻿using DomainTactics.Messaging;
+﻿using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
+using DomainTactics.Messaging;
 using DomainTactics.Persistence;
 using Microsoft.AspNetCore.Builder;
 using Microsoft.AspNetCore.Hosting;
-using Microsoft.Azure.Cosmos.Table;
 using Microsoft.Azure.Storage.Blob;
 using Paddle.Core.Channels;
 using Paddle.Core.Messages;
@@ -13,11 +15,11 @@ using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Hosting;
 using SqlStreamStore;
 using SqlStreamStore.Infrastructure;
-using TableStorageAccount = Microsoft.Azure.Cosmos.Table.CloudStorageAccount;
 using BlobStorageAccount = Microsoft.Azure.Storage.CloudStorageAccount;
 
 namespace Paddle.API
 {
+
     public class Startup
     {
         public Startup(IConfiguration configuration)
@@ -25,38 +27,46 @@ namespace Paddle.API
             Configuration = configuration;
         }
 
-        public IConfiguration Configuration { get; }
+        private IConfiguration Configuration { get; }
 
         // This method gets called by the runtime. Use this method to add services to the container.
-        public void ConfigureServices(IServiceCollection services)
+        public virtual void ConfigureServices(IServiceCollection services)
         {
             services.AddControllers();
 
-            var types = RegisterTypes();
+            services.AddSingleton(c => DocumentStorage());
+            services.AddSingleton<StreamStoreBase, InMemoryStreamStore>();
+            services.AddTransient(c=> Register.Types());
+            services.AddScoped<IRepository, SqlStreamStoreRepository>();
 
-            var store = new InMemoryStreamStore();
-            var writeRepo = new SqlStreamStoreRepository(store, types);
-            var cloudBlobClient = BlobStorageAccount.DevelopmentStorageAccount.CreateCloudBlobClient();
-            var readRepo = new BlobDocumentStorage(cloudBlobClient);
-            var commandBus = new CommandBus();
-            var eventBus = new EventBus();
-            RegisterCommandHandlers(commandBus, writeRepo);
-            RegisterEventHandlers(eventBus, readRepo, writeRepo);
 
-            var cloudTableClient = TableStorageAccount.DevelopmentStorageAccount.CreateCloudTableClient();
-            var checkpointRepository = new TableStorageCheckpointRepository(cloudTableClient);
-            checkpointRepository.ClearCheckpoint();
+            services.AddScoped<IEventBus>(c=>
+            {
+                var bus = new EventBus();
 
-            services.AddSingleton<IDocumentStorage>(readRepo);
-            services.AddSingleton<StreamStoreBase>(store);
-            services.AddSingleton(commandBus);
-            services.AddSingleton(cloudTableClient);
-            services.AddSingleton(cloudBlobClient);
-            services.AddScoped<ICheckpointRepository, TableStorageCheckpointRepository>();
-            services.AddSingleton<IEventBus>(eventBus);
-            services.AddSingleton(types);
+                Register.EventHandlers(bus, c.GetService<IDocumentStorage>(),
+                    c.GetService<IRepository>());
 
-            AllStreamSubscriber.Create(store, eventBus, types, checkpointRepository);
+                return bus;
+            });
+            services.AddScoped(c =>
+            {
+                var bus = new CommandBus();
+
+                Register.CommandHandlers(bus, c.GetService<IRepository>());
+                
+                return bus;
+            });
+
+
+        }
+
+        protected virtual IDocumentStorage DocumentStorage()
+        {
+            var cloudBlobClient = BlobStorageAccount.DevelopmentStorageAccount
+                .CreateCloudBlobClient();
+            IDocumentStorage readRepo = new BlobDocumentStorage(cloudBlobClient);
+            return readRepo;
         }
 
         // This method gets called by the runtime. Use this method to configure the HTTP request pipeline.
@@ -77,12 +87,61 @@ namespace Paddle.API
             {
                 endpoints.MapControllers();
             });
+
+            using var scope = app.ApplicationServices.CreateScope();
+            Register.AllStreamSubscription(
+                scope.ServiceProvider.GetService<StreamStoreBase>(),
+                scope.ServiceProvider.GetService<IEventBus>(), 
+                scope.ServiceProvider.GetService<TypeMapper>());
         }
 
-            
 
 
-        private void RegisterEventHandlers(EventBus bus, BlobDocumentStorage readRepo, SqlStreamStoreRepository writeRepo)
+        
+
+
+    }
+
+    public class InMemoryDocumentStorage : IDocumentStorage
+    {
+        private readonly Dictionary<string, IHaveIdentifier> _documents = new Dictionary<string, IHaveIdentifier>();
+
+        public Task<T> Load<T>(string identifier)
+        {
+            return Task.FromResult((T)_documents[identifier]);
+        }
+
+        public Task Save(IHaveIdentifier document)
+        {
+            _documents[document.Identifier] = document;
+            return Task.CompletedTask;
+        }
+    }
+
+    public static class Register
+    {
+        public static void AllStreamSubscription(StreamStoreBase store, IEventBus eventBus, TypeMapper types)
+        {
+            AllStreamSubscriber.Create(store, eventBus, types);
+        }
+
+        public static void CommandHandlers(CommandBus bus,
+                IRepository writeRepo)
+        {
+            var registrationHandlers = new UserRegistrationHandlers(writeRepo);
+            bus.Register<Core.Registration.Register>(registrationHandlers.Handle);
+
+            var chatMessageHandlers = new ChatMessageHandlers(writeRepo);
+            bus.Register<EditChatMessage>(chatMessageHandlers.Handle);
+            bus.Register<SubmitChatMessage>(chatMessageHandlers.Handle);
+
+            var channelHandlers = new ChannelCommandHandlers(writeRepo);
+            bus.Register<CreateChannel>(channelHandlers.Handle);
+            bus.Register<JoinChannel>(channelHandlers.Handle);
+            bus.Register<LeaveChannel>(channelHandlers.Handle);
+        }
+
+        public static void EventHandlers(IEventBus bus, IDocumentStorage readRepo, IRepository writeRepo)
         {
             var channelHistoryService = new ChannelHistoryHandlers(readRepo);
             var user = new UsersHandlers(writeRepo);
@@ -96,48 +155,36 @@ namespace Paddle.API
             bus.Register<RegistrationSucceeded>(userService.When);
         }
 
-        private TypeMapper RegisterTypes()
+
+        private static TypeMapper _types;
+        public static TypeMapper Types()
         {
-            var types = new TypeMapper();
+            if (_types != null) return _types;
+
+            _types = new TypeMapper();
             // commands
             // need to be registered for deserializing from the generic command endpoint
-            types.Register(typeof(Register), "Register");
-            types.Register(typeof(EditChatMessage), "EditChatMessage");
-            types.Register(typeof(SubmitChatMessage), "SubmitChatMessage");
-            types.Register(typeof(CreateChannel), "CreateChannel");
-            types.Register(typeof(JoinChannel), "JoinChannel");
-            types.Register(typeof(LeaveChannel), "LeaveChannel");
+            _types.Register(typeof(Core.Registration.Register), "Register");
+            _types.Register(typeof(EditChatMessage), "EditChatMessage");
+            _types.Register(typeof(SubmitChatMessage), "SubmitChatMessage");
+            _types.Register(typeof(CreateChannel), "CreateChannel");
+            _types.Register(typeof(JoinChannel), "JoinChannel");
+            _types.Register(typeof(LeaveChannel), "LeaveChannel");
 
             // events
             // need to be registered so the fully qualified name isn't used in the event store
-            types.Register(typeof(RegistrationStarted), "RegistrationStarted");
-            types.Register(typeof(RegistrationSucceeded), "RegistrationSucceeded");
-            types.Register(typeof(RegistrationFailed), "RegistrationFailed");
+            _types.Register(typeof(RegistrationStarted), "RegistrationStarted");
+            _types.Register(typeof(RegistrationSucceeded), "RegistrationSucceeded");
+            _types.Register(typeof(RegistrationFailed), "RegistrationFailed");
 
-            types.Register(typeof(ChannelCreated), "ChannelCreated");
-            types.Register(typeof(ChannelJoined), "ChannelJoined");
-            types.Register(typeof(ChannelLeft), "ChannelLeft");
+            _types.Register(typeof(ChannelCreated), "ChannelCreated");
+            _types.Register(typeof(ChannelJoined), "ChannelJoined");
+            _types.Register(typeof(ChannelLeft), "ChannelLeft");
 
-            types.Register(typeof(MessageSubmitted), "MessageSubmitted");
-            types.Register(typeof(MessageEdited), "MessageEdited");
+            _types.Register(typeof(MessageSubmitted), "MessageSubmitted");
+            _types.Register(typeof(MessageEdited), "MessageEdited");
 
-            return types;
-        }
-
-        private void RegisterCommandHandlers(CommandBus bus,
-            SqlStreamStoreRepository writeRepo)
-        {
-            var registrationHandlers = new UserRegistrationHandlers(writeRepo);
-            bus.Register<Register>(registrationHandlers.Handle);
-
-            var chatMessageHandlers = new ChatMessageHandlers(writeRepo);
-            bus.Register<EditChatMessage>(chatMessageHandlers.Handle);
-            bus.Register<SubmitChatMessage>(chatMessageHandlers.Handle);
-
-            var channelHandlers = new ChannelCommandHandlers(writeRepo);
-            bus.Register<CreateChannel>(channelHandlers.Handle);
-            bus.Register<JoinChannel>(channelHandlers.Handle);
-            bus.Register<LeaveChannel>(channelHandlers.Handle);
+            return _types;
         }
     }
 }

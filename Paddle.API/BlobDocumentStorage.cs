@@ -40,7 +40,6 @@ namespace Paddle.API
             throw new ArgumentOutOfRangeException(nameof(identifier));
         }
 
-
         public async Task Save(IHaveIdentifier document)
         {
             var json = JsonConvert.SerializeObject(document);

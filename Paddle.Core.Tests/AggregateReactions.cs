@@ -42,7 +42,7 @@ namespace Paddle.Core.Tests
             _bus.Register<RegistrationSucceeded>(_registration.When);
             _bus.Register<RegistrationFailed>(_registration.When);
 
-            var _ = new AllStreamSubscriber(_store, _bus, types, null, true);
+            var _ = new AllStreamSubscriber(_store, _bus, types, true);
         }
 
         [Fact]

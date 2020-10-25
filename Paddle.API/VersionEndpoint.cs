@@ -7,14 +7,18 @@ namespace Paddle.API
     [Route("version"), ApiController]
     public class VersionController : ControllerBase
     {
-        private readonly ICheckpointRepository _repo;
+        private readonly IDocumentStorage _repo;
 
-        public VersionController(ICheckpointRepository repo)
+        public VersionController(IDocumentStorage repo)
         {
             _repo = repo;
         }
 
         [HttpGet]
-        public Task<long> Version() => _repo.GetCheckpoint();
+        public async Task<long> Version(string id)
+        {
+            var document = await _repo.Load<IHaveIdentifier>(id);
+            return document.Position;
+        }
     }
 }

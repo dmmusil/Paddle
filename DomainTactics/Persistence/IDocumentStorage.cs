@@ -1,4 +1,5 @@
 ﻿using System.Threading.Tasks;
+using DomainTactics.Messaging;
 
 namespace DomainTactics.Persistence
 {
