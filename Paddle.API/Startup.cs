@@ -34,29 +34,26 @@ namespace Paddle.API
         {
             services.AddControllers();
 
-            var types = RegisterTypes();
-
-
             services.AddSingleton(c => DocumentStorage());
             services.AddSingleton<StreamStoreBase, InMemoryStreamStore>();
-            services.AddSingleton(types);
-            services.AddSingleton<IRepository, SqlStreamStoreRepository>();
+            services.AddTransient(c=> Register.Types());
+            services.AddScoped<IRepository, SqlStreamStoreRepository>();
 
 
-            services.AddSingleton<IEventBus>(c=>
+            services.AddScoped<IEventBus>(c=>
             {
                 var bus = new EventBus();
 
-                RegisterHandlers.RegisterEventHandlers(bus, c.GetService<IDocumentStorage>(),
+                Register.EventHandlers(bus, c.GetService<IDocumentStorage>(),
                     c.GetService<IRepository>());
 
                 return bus;
             });
-            services.AddSingleton(c =>
+            services.AddScoped(c =>
             {
                 var bus = new CommandBus();
 
-                RegisterHandlers.RegisterCommandHandlers(bus, c.GetService<IRepository>());
+                Register.CommandHandlers(bus, c.GetService<IRepository>());
                 
                 return bus;
             });
@@ -91,39 +88,16 @@ namespace Paddle.API
                 endpoints.MapControllers();
             });
 
-            RegisterHandlers.AllStreamSubscription(app.ApplicationServices.GetService<StreamStoreBase>(),
-                app.ApplicationServices.GetService<IEventBus>(), app.ApplicationServices.GetService<TypeMapper>());
+            using var scope = app.ApplicationServices.CreateScope();
+            Register.AllStreamSubscription(
+                scope.ServiceProvider.GetService<StreamStoreBase>(),
+                scope.ServiceProvider.GetService<IEventBus>(), 
+                scope.ServiceProvider.GetService<TypeMapper>());
         }
 
 
 
-        private TypeMapper RegisterTypes()
-        {
-            var types = new TypeMapper();
-            // commands
-            // need to be registered for deserializing from the generic command endpoint
-            types.Register(typeof(Register), "Register");
-            types.Register(typeof(EditChatMessage), "EditChatMessage");
-            types.Register(typeof(SubmitChatMessage), "SubmitChatMessage");
-            types.Register(typeof(CreateChannel), "CreateChannel");
-            types.Register(typeof(JoinChannel), "JoinChannel");
-            types.Register(typeof(LeaveChannel), "LeaveChannel");
-
-            // events
-            // need to be registered so the fully qualified name isn't used in the event store
-            types.Register(typeof(RegistrationStarted), "RegistrationStarted");
-            types.Register(typeof(RegistrationSucceeded), "RegistrationSucceeded");
-            types.Register(typeof(RegistrationFailed), "RegistrationFailed");
-
-            types.Register(typeof(ChannelCreated), "ChannelCreated");
-            types.Register(typeof(ChannelJoined), "ChannelJoined");
-            types.Register(typeof(ChannelLeft), "ChannelLeft");
-
-            types.Register(typeof(MessageSubmitted), "MessageSubmitted");
-            types.Register(typeof(MessageEdited), "MessageEdited");
-
-            return types;
-        }
+        
 
 
     }
@@ -144,18 +118,18 @@ namespace Paddle.API
         }
     }
 
-    public static class RegisterHandlers
+    public static class Register
     {
         public static void AllStreamSubscription(StreamStoreBase store, IEventBus eventBus, TypeMapper types)
         {
             AllStreamSubscriber.Create(store, eventBus, types);
         }
 
-        public static void RegisterCommandHandlers(CommandBus bus,
+        public static void CommandHandlers(CommandBus bus,
                 IRepository writeRepo)
         {
             var registrationHandlers = new UserRegistrationHandlers(writeRepo);
-            bus.Register<Register>(registrationHandlers.Handle);
+            bus.Register<Core.Registration.Register>(registrationHandlers.Handle);
 
             var chatMessageHandlers = new ChatMessageHandlers(writeRepo);
             bus.Register<EditChatMessage>(chatMessageHandlers.Handle);
@@ -167,7 +141,7 @@ namespace Paddle.API
             bus.Register<LeaveChannel>(channelHandlers.Handle);
         }
 
-        public static void RegisterEventHandlers(IEventBus bus, IDocumentStorage readRepo, IRepository writeRepo)
+        public static void EventHandlers(IEventBus bus, IDocumentStorage readRepo, IRepository writeRepo)
         {
             var channelHistoryService = new ChannelHistoryHandlers(readRepo);
             var user = new UsersHandlers(writeRepo);
@@ -179,6 +153,38 @@ namespace Paddle.API
             bus.Register<MessageEdited>(channelHistoryService.When);
             bus.Register<RegistrationStarted>(user.When);
             bus.Register<RegistrationSucceeded>(userService.When);
+        }
+
+
+        private static TypeMapper _types;
+        public static TypeMapper Types()
+        {
+            if (_types != null) return _types;
+
+            _types = new TypeMapper();
+            // commands
+            // need to be registered for deserializing from the generic command endpoint
+            _types.Register(typeof(Core.Registration.Register), "Register");
+            _types.Register(typeof(EditChatMessage), "EditChatMessage");
+            _types.Register(typeof(SubmitChatMessage), "SubmitChatMessage");
+            _types.Register(typeof(CreateChannel), "CreateChannel");
+            _types.Register(typeof(JoinChannel), "JoinChannel");
+            _types.Register(typeof(LeaveChannel), "LeaveChannel");
+
+            // events
+            // need to be registered so the fully qualified name isn't used in the event store
+            _types.Register(typeof(RegistrationStarted), "RegistrationStarted");
+            _types.Register(typeof(RegistrationSucceeded), "RegistrationSucceeded");
+            _types.Register(typeof(RegistrationFailed), "RegistrationFailed");
+
+            _types.Register(typeof(ChannelCreated), "ChannelCreated");
+            _types.Register(typeof(ChannelJoined), "ChannelJoined");
+            _types.Register(typeof(ChannelLeft), "ChannelLeft");
+
+            _types.Register(typeof(MessageSubmitted), "MessageSubmitted");
+            _types.Register(typeof(MessageEdited), "MessageEdited");
+
+            return _types;
         }
     }
 }

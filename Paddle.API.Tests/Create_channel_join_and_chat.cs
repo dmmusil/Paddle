@@ -1,6 +1,5 @@
 using System;
 using System.Diagnostics;
-using System.Linq;
 using System.Net.Http;
 using System.Text;
 using System.Threading.Tasks;
@@ -28,8 +27,6 @@ namespace Paddle.API.Tests
         {
             _factory = factory.WithWebHostBuilder(c => c.ConfigureTestServices(s =>
             {
-                s.Remove(s.FirstOrDefault(ss =>
-                    ss.ServiceType == typeof(IDocumentStorage) || ss.ServiceType == typeof(BlobDocumentStorage)));
                 s.AddSingleton<IDocumentStorage, InMemoryDocumentStorage>();
             }));
             _testOutputHelper = testOutputHelper;
@@ -84,12 +81,22 @@ namespace Paddle.API.Tests
 
     public static class HttpClientExtensions
     {
+        /// <summary>
+        /// Submits a command and waits until it's processed by the read side.
+        /// </summary>
+        /// <param name="client"></param>
+        /// <param name="c"></param>
+        /// <param name="commandName"></param>
+        /// <param name="console"></param>
+        /// <returns></returns>
         public static async Task SubmitCommand(this HttpClient client,
             Command c, string commandName, ITestOutputHelper console)
         {
             var command = new { Type = commandName, Command = JsonConvert.SerializeObject(c) };
             var json = JsonConvert.SerializeObject(command);
             console.WriteLine($"Submitting {json}");
+            
+            // send the command
             var request = await client.PostAsync("command",
                 new StringContent(json, Encoding.UTF8, "application/json"));
             console.WriteLine($"Result: {request.StatusCode}");
@@ -97,13 +104,21 @@ namespace Paddle.API.Tests
             {
                 console.WriteLine(await request.Content.ReadAsStringAsync());
             }
+
+            // keep track of how long it takes the read side to catch up
             var timer = Stopwatch.StartNew();
-            var writeVersion = await request.Content.ReadAsStringAsync();
-            var versionUrl = "version?id=channels/DK";
+            // figure out where the write side is
+            var writeVersionValue = await request.Content.ReadAsStringAsync();
+            
+            // query the read side
+            const string versionUrl = "version?id=channels/DK";
             var readVersion = await client.GetStringAsync(versionUrl);
+
             var attempts = 0;
-            while (long.Parse(readVersion) <
-                   long.Parse(writeVersion))
+            var writeVersion = long.Parse(writeVersionValue);
+            
+            // query up to 50 times to see if it catches up
+            while (long.Parse(readVersion) < writeVersion)
             {
                 readVersion = await client.GetStringAsync(versionUrl);
                 attempts++;
@@ -111,7 +126,6 @@ namespace Paddle.API.Tests
             }
 
             console.WriteLine($"Read side caught up in {timer.ElapsedMilliseconds} ms");
-
         }
 
     }
